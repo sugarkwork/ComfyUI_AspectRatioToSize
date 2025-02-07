@@ -1,0 +1,15 @@
+[project]
+name = "ComfyUI_AspectRatioToSize"
+description = "A ComfyUI custom node that calculates width and height while maintaining aspect ratio, making it easier to determine image resolutions with specified aspect ratios and longer side values."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/sugarkwork/ComfyUI_AspectRatioToSize"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "sugarknight"
+DisplayName = "ComfyUI_AspectRatioToSize"
+Icon = ""
