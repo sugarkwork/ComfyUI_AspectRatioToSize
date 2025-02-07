@@ -1,3 +1,4 @@
+import torch
 from typing import Tuple
 
 class ResolutionSize:
@@ -86,14 +87,72 @@ class AspectRatioToSize:
         return (resolution_size,)
 
 
+
+class CalculateImagePadding:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE", ),
+                "aspect_ratio": ("STRING", {"default": "16:9"}),
+            }
+        }
+    
+    RETURN_NAMES = ("left", "right", "top", "bottom")
+    RETURN_TYPES = ("INT","INT","INT","INT")
+
+    FUNCTION = "calculate_image_padding"
+    OUTPUT_NODE = True
+
+    CATEGORY = "image"
+
+    def calculate_image_padding(self, image: torch.Tensor, aspect_ratio:str) -> Tuple[int, int, int, int]:
+        aspect_ratio = aspect_ratio.split(":")
+        width_ratio = max(0, float(aspect_ratio[0]))
+        height_ratio = max(0, float(aspect_ratio[1]))
+
+        # Calculate the target aspect ratio
+        target_ratio = width_ratio / height_ratio
+        
+        # Get image dimensions (assuming channel-first format: [C, H, W])
+        height = image.shape[1]
+        width = image.shape[2]
+
+        # Calculate current aspect ratio
+        current_ratio = width / height
+
+        if current_ratio == target_ratio:
+            # If aspect ratio matches, no padding is required
+            return (0, 0, 0, 0)
+        elif current_ratio > target_ratio:
+            # Width is too large, add padding to the height (top and bottom)
+            new_height = int(width / target_ratio)
+            total_padding = new_height - height
+            padding_top = total_padding // 2
+            padding_bottom = total_padding - padding_top
+            return (0, 0, padding_top, padding_bottom)
+        else:
+            # Height is too large, add padding to the width (left and right)
+            new_width = int(height * target_ratio)
+            total_padding = new_width - width
+            padding_left = total_padding // 2
+            padding_right = total_padding - padding_left
+            return (padding_left, padding_right, 0, 0)
+
+
 NODE_CLASS_MAPPINGS = {
     "AspectRatioToSize": AspectRatioToSize,
-    "SizeToWidthHeight": SizeToWidthHeight
+    "SizeToWidthHeight": SizeToWidthHeight,
+    "CalculateImagePadding": CalculateImagePadding
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AspectRatioToSize": "AspectRatioToSize",
-    "SizeToWidthHeight": "SizeToWidthHeight"
+    "SizeToWidthHeight": "SizeToWidthHeight",
+    "CalculateImagePadding": "CalculateImagePadding"
 }
 
 
