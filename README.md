@@ -1,36 +1,29 @@
-# comfyui_psd
+# ComfyUI_AspectRatioToSize
 
-このコードは、ComfyUI に PSD ファイルを出力する機能を追加します。
+アスペクト比を維持した、横幅と高さの数値を計算する、ComfyUI 用のノードです。
 
-まだテスト版であり、正常に動作しない可能性や、環境を壊す可能性があります。
+任意のアスペクト比を維持した、複数の解像度の計算をする際に使用します。
 
-# install 
+## AspectRatioToSize
+アスペクト比を計算して、サイズオブジェクトを返します。
 
-    cd ComfyUI\custom_nodes
-    git clone https://github.com/sugarkwork/comfyui_psd.git
-    cd comfyui_psd
-    .\install.bat
+### input
+- aspect_ratio: アスペクト比を指定します。
+- resolution: 長辺サイズを指定します。
 
-install.bat を叩く必要があります。
-
-上手く動かないかもしれません……。
-
-# how to use
-
-使い方は、
-
-1. まず PSDLayer ノードを作成し、image に画像を接続します。
-2. レイヤー名前や合成モードを指定します。
-3. 新しい PSDLayer ノードを作成します。
-4. 先に作成した PSDLayer ノードの出力の PSD を、新しい PSDLayer の入力に入れて、同じように画像や名前やモードを指定します。
-5. レイヤーを追加した順に、下から積み重なります。つまり最初の PSDLayer が一番背景になります。
-6. 最後に Save PSD ノードに PSD を接続すると、最終的な PSD ファイルが保存されます。
+### output
+- Size: Size オブジェクトを返します。
 
 
-# sample node
+## SizeToWidthHeight
+サイズオブジェクトから横幅と高さの値を取り出します。
 
-![image](https://github.com/user-attachments/assets/8c99ee84-6ac2-4451-8e7e-73a0f23ab9a3)
+### input
+- Size: サイズオブジェクトを指定します。
 
-# sample result
+### output
+- Width: 幅を返します
+- Height: 高さを返します
+- LongerSide: 長辺のサイズを返します
+- SmallSide: 短辺のサイズを返します
 
-![image](https://github.com/user-attachments/assets/3a0aa7bf-4c9c-4923-89f9-3bf6c7363cea)
