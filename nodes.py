@@ -1,4 +1,5 @@
 import torch
+import PIL.Image as Image
 from typing import Tuple
 
 class ResolutionSize:
@@ -143,16 +144,144 @@ class CalculateImagePadding:
             return (padding_left, padding_right, 0, 0)
 
 
+class MatchImageToAspectRatio:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "image": ("IMAGE", ),
+            },
+            "optional": {
+                "ratio_16_9": ("BOOLEAN", {"default": True}),
+                "ratio_9_16": ("BOOLEAN", {"default": True}),
+                "ratio_4_3": ("BOOLEAN", {"default": True}),
+                "ratio_3_4": ("BOOLEAN", {"default": True}),
+                "ratio_3_2": ("BOOLEAN", {"default": True}),
+                "ratio_2_3": ("BOOLEAN", {"default": True}),
+                "ratio_1_1": ("BOOLEAN", {"default": True}),
+                "aspect_ratio": ("STRING", {"default": "16:9, 9:16"}),
+            }
+        }
+    
+    RETURN_NAMES = ("ratio", "ratio_w", "ratio_h")
+    RETURN_TYPES = ("STRING", "INT", "INT")
+    
+    def find_ratio(self, image: torch.Tensor, ratio_list:list):
+        
+        # 画像の寸法を取得
+        if isinstance(image, Image.Image):
+            width, height = image.size
+        elif isinstance(image, torch.Tensor):
+            width, height = image.shape[2], image.shape[1]
+        
+        # 実際の比率を計算
+        actual_ratio = width / height
+        
+        # 最も近いアスペクト比を見つける
+        min_diff = float('inf')
+        closest_ratio = None
+        
+        for w, h in ratio_list:
+            standard_ratio = w / h
+            diff = abs(actual_ratio - standard_ratio)
+            
+            if diff < min_diff:
+                min_diff = diff
+                closest_ratio = (w, h)
+        
+        return closest_ratio
+
+    def ratio_str_to_tuple(self, ratio_str:str) -> list:
+        if not isinstance(ratio_str, str):
+            return []
+        if not ratio_str:
+            return []
+        ratio_str = ratio_str.strip()
+        if not ratio_str:
+            return []
+        
+        result = []
+
+        if ";" in ratio_str:
+            ratio_str = ratio_str.replace(";", ",")
+        if "\n" in ratio_str:
+            ratio_str = ratio_str.replace("\n", ",")
+        if "." in ratio_str:
+            ratio_str = ratio_str.replace(".", ",")
+        if "/" in ratio_str:
+            ratio_str = ratio_str.replace("/", ",")
+
+        for ratio in ratio_str.split(","):
+            if not ratio:
+                continue
+            ratio = ratio.strip()
+            if not ratio:
+                continue
+
+            ratio_wh = ratio.split(":")
+            if len(ratio_wh) != 2:
+                continue
+            
+            try:
+                w = int(ratio_wh[0].strip())
+                h = int(ratio_wh[1].strip())
+                if w <= 0 or h <= 0:
+                    continue
+                result.append((w, h))
+            except:
+                continue
+
+        return result
+
+    FUNCTION = "match_image_to_aspect_ratio"
+    OUTPUT_NODE = True
+
+    CATEGORY = "image"
+
+    def match_image_to_aspect_ratio(self, image: torch.Tensor, ratio_16_9:bool, ratio_9_16:bool, ratio_4_3:bool, ratio_3_4:bool, ratio_3_2:bool, ratio_2_3:bool, ratio_1_1:bool, aspect_ratio:str) -> Tuple[str, int, int]:
+        
+        # アスペクト比のリストを作成
+        ratio_list = []
+        if ratio_16_9:
+            ratio_list.append((16, 9))
+        if ratio_9_16:
+            ratio_list.append((9, 16))
+        if ratio_4_3:
+            ratio_list.append((4, 3))
+        if ratio_3_4:
+            ratio_list.append((3, 4))
+        if ratio_3_2:
+            ratio_list.append((3, 2))
+        if ratio_2_3:
+            ratio_list.append((2, 3))
+        if ratio_1_1:
+            ratio_list.append((1, 1))
+        
+        ratio_list.extend(self.ratio_str_to_tuple(aspect_ratio))
+
+        ratio_list = list(set(ratio_list))
+        
+        choise_w, choise_h = self.find_ratio(image, ratio_list)
+        return (f"{choise_w}:{choise_h}", choise_w, choise_h)
+    
+
+
+
 NODE_CLASS_MAPPINGS = {
     "AspectRatioToSize": AspectRatioToSize,
     "SizeToWidthHeight": SizeToWidthHeight,
-    "CalculateImagePadding": CalculateImagePadding
+    "CalculateImagePadding": CalculateImagePadding,
+    "MatchImageToAspectRatio": MatchImageToAspectRatio
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AspectRatioToSize": "AspectRatioToSize",
     "SizeToWidthHeight": "SizeToWidthHeight",
-    "CalculateImagePadding": "CalculateImagePadding"
+    "CalculateImagePadding": "CalculateImagePadding",
+    "MatchImageToAspectRatio": "MatchImageToAspectRatio"
 }
 
 
@@ -187,6 +316,35 @@ def simple_test():
     size = ResolutionSize(1920, 1080)
     result = node.size_to_width_height(size)
     print(size, result)
+
+    import numpy as np
+
+    def convert_to_tensor(image: Image.Image) -> torch.Tensor:
+        if isinstance(image, torch.Tensor):
+            return image
+        if isinstance(image, np.ndarray):
+            return torch.from_numpy(image.astype(np.float32) / 255.0).unsqueeze(0)
+        if isinstance(image, Image.Image):
+            return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+
+    def gen_image(width, height):
+        img = convert_to_tensor(Image.new("RGB", (width, height)))
+        return img
+
+    node = MatchImageToAspectRatio()
+    rgb = gen_image(1920, 1080)
+    print(node.match_image_to_aspect_ratio(rgb, True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, True, True, True, "9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, False, True, True, "9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(rgb, False, True, False, True, False, True, True, "9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(rgb, False, True, False, True, False, True, True, ""))
+
+    print(node.match_image_to_aspect_ratio(gen_image(1000, 1000), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(gen_image(1000, 1001), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(gen_image(1000, 1010), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(gen_image(1000, 1100), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+    print(node.match_image_to_aspect_ratio(gen_image(1000, 1500), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
 
 
 #if __name__ == "__main__":
