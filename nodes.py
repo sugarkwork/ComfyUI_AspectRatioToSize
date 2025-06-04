@@ -432,6 +432,8 @@ NODE_CLASS_MAPPINGS = {
     "CalculateImagePadding": CalculateImagePadding,
     "MatchImageToAspectRatio": MatchImageToAspectRatio,
     "CalcFactorWidthHeight": CalcFactorWidthHeight,
+    "AspectRatio": AspectRatio,
+
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -439,7 +441,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SizeToWidthHeight": "SizeToWidthHeight",
     "CalculateImagePadding": "CalculateImagePadding",
     "MatchImageToAspectRatio": "MatchImageToAspectRatio",
-    "CalcFactorWidthHeight": "CalcFactorWidthHeight"
+    "CalcFactorWidthHeight": "CalcFactorWidthHeight",
+    "AspectRatio": "AspectRatio",
+    
 }
 
 
