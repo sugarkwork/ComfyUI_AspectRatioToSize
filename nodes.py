@@ -61,7 +61,8 @@ class AspectRatioToSize:
 
     CATEGORY = "image"
 
-    def aspect_ratio_to_size(self, aspect_ratio, resolution) -> ResolutionSize:
+    def aspect_ratio_to_size(self, aspect_ratio, resolution) -> tuple:
+        resolution = ((int(resolution) + 63) // 64) * 64
         aspect_ratio = aspect_ratio.split(":")
         width_ratio = max(0, float(aspect_ratio[0]))
         height_ratio = max(0, float(aspect_ratio[1]))
@@ -111,9 +112,9 @@ class CalculateImagePadding:
     CATEGORY = "image"
 
     def calculate_image_padding(self, image: torch.Tensor, aspect_ratio:str) -> Tuple[int, int, int, int]:
-        aspect_ratio = aspect_ratio.split(":")
-        width_ratio = max(0, float(aspect_ratio[0]))
-        height_ratio = max(0, float(aspect_ratio[1]))
+        aspect_ratio_split = aspect_ratio.split(":")
+        width_ratio = max(0, float(aspect_ratio_split[0]))
+        height_ratio = max(0, float(aspect_ratio_split[1]))
 
         # Calculate the target aspect ratio
         target_ratio = width_ratio / height_ratio
@@ -144,6 +145,49 @@ class CalculateImagePadding:
             return (padding_left, padding_right, 0, 0)
 
 
+
+class AspectRatio:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "ratio": (["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "12:5", "1:1"], {"default": "16:9"}),
+                "longer_side": ("INT", {"default": 1920, "min": 128, "max": 1024 * 16, "step": 64}),
+            }
+        }
+    
+    RETURN_NAMES = ("ratio", "ratio_w", "ratio_h", "width", "height", "longer_side", "shorter_side")
+    RETURN_TYPES = ("STRING", "INT", "INT", "INT", "INT", "INT", "INT")
+    
+    def aspect_ratio_to_size(self, ratio, longer_side) -> tuple:
+        longer_side = ((int(longer_side) + 63) // 64) * 64
+        ratio_split = ratio.split(":")
+        width_ratio = max(0, float(ratio_split[0]))
+        height_ratio = max(0, float(ratio_split[1]))
+        
+        if width_ratio == 0 or height_ratio == 0:
+            return (ratio, 0, 0, 0, 0, longer_side, 0)
+        
+        width = 0
+        height = 0
+        if width_ratio > height_ratio:
+            width = longer_side
+            height = int((longer_side / width_ratio) * height_ratio)
+        else:
+            height = longer_side
+            width = int((longer_side / height_ratio) * width_ratio)
+        
+        if width < 0:
+            width = 0
+        if height < 0:
+            height = 0
+        
+        return (ratio, width_ratio, height_ratio, width, height, longer_side, min(width, height))
+
+
 class MatchImageToAspectRatio:
     def __init__(self):
         pass
@@ -169,11 +213,11 @@ class MatchImageToAspectRatio:
     RETURN_NAMES = ("ratio", "ratio_w", "ratio_h")
     RETURN_TYPES = ("STRING", "INT", "INT")
     
-    def find_ratio(self, image: torch.Tensor, ratio_list:list):
+    def find_ratio(self, image: torch.Tensor, ratio_list:list) -> tuple:
         
         # 画像の寸法を取得
         if isinstance(image, Image.Image):
-            width, height = image.size
+            width, height = image.size()
         elif isinstance(image, torch.Tensor):
             width, height = image.shape[2], image.shape[1]
         
@@ -182,7 +226,7 @@ class MatchImageToAspectRatio:
         
         # 最も近いアスペクト比を見つける
         min_diff = float('inf')
-        closest_ratio = None
+        closest_ratio = None, None
         
         for w, h in ratio_list:
             standard_ratio = w / h
@@ -266,22 +310,136 @@ class MatchImageToAspectRatio:
         
         choise_w, choise_h = self.find_ratio(image, ratio_list)
         return (f"{choise_w}:{choise_h}", choise_w, choise_h)
-    
 
+
+class CalcFactorWidthHeight:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "width": ("INT",),
+                "height": ("INT",),
+                "factor": ("FLOAT",{"default": 1.5}),
+                "divide": ("INT",{"default": 1, "step": 1, "min": 1}),
+                "plus_divide": ("BOOLEAN", {"default": True}),
+            }
+        }
+    
+    RETURN_NAMES = ("width", "height", "large_side", "small_side", "width_float", "height_float", "large_side_float", "small_side_float")
+    RETURN_TYPES = ("INT", "INT", "INT", "INT", "FLOAT", "FLOAT", "FLOAT", "FLOAT")
+
+    FUNCTION = "calc_width_height"
+    OUTPUT_NODE = True
+
+    CATEGORY = "image"
+
+    def calc_width_height(
+        self,
+        width: int,
+        height: int,
+        factor: float,
+        divide: int,
+        plus_divide: bool
+    ) -> Tuple[int, int, int, int, float, float, float, float]:
+        """
+        Scale (width, height) by *factor* and optionally snap the integer
+        results to a multiple of *divide*.
+
+        Parameters
+        ----------
+        width : int
+            Original width in pixels.
+        height : int
+            Original height in pixels.
+        factor : float
+            Scaling factor (>0). A value of 0 is treated as invalid.
+        divide : int
+            Alignment unit. If >1, the integer results are rounded to the
+            nearest multiple of this value. If <=1, no alignment is applied.
+        plus_divide : bool
+            Alignment direction when `divide` > 1  
+            - False : round **down** (floor) to nearest multiple  
+            - True  : round **up**  (ceil)  to nearest multiple
+
+        Returns
+        -------
+        Tuple[int, int, int, int, float, float, float, float]
+            (width_i, height_i, long_i, short_i,
+             width_f, height_f, long_f, short_f)
+
+            * `_f` … float results before alignment  
+            * `_i` … int  results after alignment
+        """
+        # ── 0. 早期リターン ───────────────────────────
+        if width == 0 or height == 0 or factor == 0 or divide == 0:
+            return (0, 0, 0, 0, 0, 0, 0, 0)
+
+        # 型を明確にそろえる
+        width, height = int(width), int(height)
+        factor, divide = float(factor), int(divide)
+
+        # ── 1. スケーリング ───────────────────────────
+        width_f, height_f = self._scale_dimensions(width, height, factor)
+        long_f, short_f  = self._long_short(width_f, height_f)
+
+        # ── 2. int 化 & 任意で倍数合わせ ──────────────
+        width_i, height_i = int(width_f), int(height_f)
+
+        if divide > 1:
+            width_i  = self._align_to_divide(width_f, divide, plus_divide)
+            height_i = self._align_to_divide(height_f, divide, plus_divide)
+
+        _long_i, _short_i = self._long_short(width_i, height_i)
+        long_i = int(_long_i)
+        short_i = int(_short_i)
+
+        return (
+            width_i, height_i,
+            long_i,  short_i,
+            width_f, height_f,
+            long_f,  short_f
+        )
+
+    # ────────────────── 内部ユーティリティ ──────────────────
+    @staticmethod
+    def _scale_dimensions(w: int, h: int, f: float) -> Tuple[float, float]:
+        """Return (w * f, h * f) in float."""
+        return w * f, h * f
+
+    @staticmethod
+    def _align_to_divide(value: float, div: int, ceil: bool) -> int:
+        """
+        Snap *value* to a multiple of *div*.
+        Floor by default; if *ceil* is True, round up only when必要.
+        """
+        base = int(value / div) * div  # floor 相当
+        if ceil and int(value) != base:
+            base += div
+        return base
+
+    @staticmethod
+    def _long_short(w: float, h: float) -> Tuple[float, float]:
+        """Return (longer_side, shorter_side)."""
+        return (max(w, h), min(w, h))
 
 
 NODE_CLASS_MAPPINGS = {
     "AspectRatioToSize": AspectRatioToSize,
     "SizeToWidthHeight": SizeToWidthHeight,
     "CalculateImagePadding": CalculateImagePadding,
-    "MatchImageToAspectRatio": MatchImageToAspectRatio
+    "MatchImageToAspectRatio": MatchImageToAspectRatio,
+    "CalcFactorWidthHeight": CalcFactorWidthHeight,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "AspectRatioToSize": "AspectRatioToSize",
     "SizeToWidthHeight": "SizeToWidthHeight",
     "CalculateImagePadding": "CalculateImagePadding",
-    "MatchImageToAspectRatio": "MatchImageToAspectRatio"
+    "MatchImageToAspectRatio": "MatchImageToAspectRatio",
+    "CalcFactorWidthHeight": "CalcFactorWidthHeight"
 }
 
 
@@ -345,6 +503,15 @@ def simple_test():
     print(node.match_image_to_aspect_ratio(gen_image(1000, 1010), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
     print(node.match_image_to_aspect_ratio(gen_image(1000, 1100), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
     print(node.match_image_to_aspect_ratio(gen_image(1000, 1500), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
+
+    node = CalcFactorWidthHeight()
+    print(node.calc_width_height(1920, 1080, 1, 2, True))
+    print(node.calc_width_height(1920, 1080, 1.5, 2, False))
+    print(node.calc_width_height(1920, 1080, 2, 1, True))
+    print(node.calc_width_height(1920, 1080, 3.141592653589793, 16, True))
+    print(node.calc_width_height(1920, 1080, 3.141592653589793, 16, False))
+    print(node.calc_width_height(1920, 1080, 3.141592653589793, 64, True))
+    print(node.calc_width_height(1234, 4567, 3, 64, True))
 
 
 #if __name__ == "__main__":
