@@ -154,13 +154,17 @@ class AspectRatio:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "ratio": (["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "12:5", "1:1"], {"default": "16:9"}),
+                "ratio": (["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2", "12:5", "5:12", "1:1"], {"default": "16:9"}),
                 "longer_side": ("INT", {"default": 1920, "min": 128, "max": 1024 * 16, "step": 64}),
             }
         }
     
     RETURN_NAMES = ("ratio", "ratio_w", "ratio_h", "width", "height", "longer_side", "shorter_side")
     RETURN_TYPES = ("STRING", "INT", "INT", "INT", "INT", "INT", "INT")
+
+    FUNCTION = "aspect_ratio_to_size"
+    OUTPUT_NODE = True
+    
     
     def aspect_ratio_to_size(self, ratio, longer_side) -> tuple:
         longer_side = ((int(longer_side) + 63) // 64) * 64
@@ -445,78 +449,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AspectRatio": "AspectRatio",
     
 }
-
-
-def simple_test():
-    node = AspectRatioToSize()
-
-    ratio = "16:9"
-    result = node.aspect_ratio_to_size(ratio, 1920)
-    print(ratio, result)
-
-    ratio = "9:16"
-    result = node.aspect_ratio_to_size(ratio, 1920)
-    print(ratio, result)
-
-    ratio = "4:3"
-    result = node.aspect_ratio_to_size(ratio, 640)
-    print(ratio, result)
-
-    ratio = "3:4"
-    result = node.aspect_ratio_to_size(ratio, 640)
-    print(ratio, result)
-
-    ratio = "1:1"
-    result = node.aspect_ratio_to_size(ratio, 640)
-    print(ratio, result)
-
-    ratio = "1:0.5625"
-    result = node.aspect_ratio_to_size(ratio, 1920)
-    print(ratio, result)
-
-    node = SizeToWidthHeight()
-    size = ResolutionSize(1920, 1080)
-    result = node.size_to_width_height(size)
-    print(size, result)
-
-    import numpy as np
-
-    def convert_to_tensor(image: Image.Image) -> torch.Tensor:
-        if isinstance(image, torch.Tensor):
-            return image
-        if isinstance(image, np.ndarray):
-            return torch.from_numpy(image.astype(np.float32) / 255.0).unsqueeze(0)
-        if isinstance(image, Image.Image):
-            return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
-
-    def gen_image(width, height):
-        img = convert_to_tensor(Image.new("RGB", (width, height)))
-        return img
-
-    node = MatchImageToAspectRatio()
-    rgb = gen_image(1920, 1080)
-    print(node.match_image_to_aspect_ratio(rgb, True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, True, True, True, "9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(rgb, False, True, True, True, False, True, True, "9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(rgb, False, True, False, True, False, True, True, "9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(rgb, False, True, False, True, False, True, True, ""))
-
-    print(node.match_image_to_aspect_ratio(gen_image(1000, 1000), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(gen_image(1000, 1001), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(gen_image(1000, 1010), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(gen_image(1000, 1100), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-    print(node.match_image_to_aspect_ratio(gen_image(1000, 1500), True, True, True, True, True, True, True, "16:9, 9:16, 3:1"))
-
-    node = CalcFactorWidthHeight()
-    print(node.calc_width_height(1920, 1080, 1, 2, True))
-    print(node.calc_width_height(1920, 1080, 1.5, 2, False))
-    print(node.calc_width_height(1920, 1080, 2, 1, True))
-    print(node.calc_width_height(1920, 1080, 3.141592653589793, 16, True))
-    print(node.calc_width_height(1920, 1080, 3.141592653589793, 16, False))
-    print(node.calc_width_height(1920, 1080, 3.141592653589793, 64, True))
-    print(node.calc_width_height(1234, 4567, 3, 64, True))
-
-
-#if __name__ == "__main__":
-#    simple_test()
